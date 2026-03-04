@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Маршруты</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 10px; font-size: 13px; background: #f5f5f5; }
+        h1 { color: #555; margin: 0 0 10px 0; font-size: 18px; }
+        h2 { color: #666; margin: 10px 0 5px 0; font-size: 14px; }
+        .nav { margin-bottom: 10px; }
+        .nav a { margin-right: 10px; color: #666; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+        .card { 
+            border: 1px solid #ccc; 
+            padding: 8px; 
+            margin-bottom: 5px; 
+            background: #fff;
+        }
+        .card input, .card select, .card textarea {
+            padding: 3px; margin: 2px; font-size: 12px;
+        }
+        .days-checkboxes label { margin-right: 5px; }
+        button { 
+            padding: 4px 10px; 
+            margin: 2px; 
+            cursor: pointer;
+            background: #888;
+            color: #fff;
+            border: none;
+            font-size: 12px;
+        }
+        button:hover { background: #666; }
+        button.delete { background: #999; }
+        #message { padding: 5px; margin-bottom: 5px; }
+        .success { background: #ddd; color: #333; }
+        .error { background: #ccc; color: #333; }
+        .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="/">Маршруты</a>
+        <a href="/drivers">Водители</a>
+        <a href="/schedule">График</a>
+    </div>
+    
+    <div id="message"></div>
+    
+    <div class="card">
+        <input type="hidden" id="routeId">
+        <div class="row">
+            <label>Название: <input type="text" id="routeName" placeholder="Название"></label>
+            <label>Цена: <input type="number" id="routePrice" placeholder="0" style="width:60px"></label>
+        </div>
+        <div class="days-checkboxes">
+            <label><input type="checkbox" id="monday" checked> ПН</label>
+            <label><input type="checkbox" id="tuesday" checked> ВТ</label>
+            <label><input type="checkbox" id="wednesday" checked> СР</label>
+            <label><input type="checkbox" id="thursday" checked> ЧТ</label>
+            <label><input type="checkbox" id="friday" checked> ПТ</label>
+            <label><input type="checkbox" id="saturday"> СБ</label>
+            <label><input type="checkbox" id="sunday"> ВС</label>
+        </div>
+        <button onclick="saveRoute()">Сохранить</button>
+        <button onclick="clearForm()">Очистить</button>
+    </div>
+    
+    <h2>Список</h2>
+    <div id="routesList"></div>
+    
+    <script>
+        let routes = [];
+        
+        async function loadRoutes() {
+            const response = await fetch('/api/routes');
+            routes = await response.json();
+            renderRoutes();
+        }
+        
+        function renderRoutes() {
+            const list = document.getElementById('routesList');
+            list.innerHTML = '';
+            routes.forEach(route => {
+                const days = [];
+                if (route.monday) days.push('ПН');
+                if (route.tuesday) days.push('ВТ');
+                if (route.wednesday) days.push('СР');
+                if (route.thursday) days.push('ЧТ');
+                if (route.friday) days.push('ПТ');
+                if (route.saturday) days.push('СБ');
+                if (route.sunday) days.push('ВС');
+                
+                list.innerHTML += `
+                    <div class="card">
+                        [${route.id}] <b>${route.name}</b> - ${route.price} руб. | Дни: ${days.join(', ') || '-'}
+                        <button class="edit" onclick="editRoute(${route.id})">Ред</button>
+                        <button class="delete" onclick="deleteRoute(${route.id})">Х</button>
+                    </div>
+                `;
+            });
+        }
+        
+        function editRoute(id) {
+            const route = routes.find(r => r.id === id);
+            if (!route) return;
+            document.getElementById('routeId').value = route.id;
+            document.getElementById('routeName').value = route.name;
+            document.getElementById('routePrice').value = route.price;
+            document.getElementById('monday').checked = route.monday;
+            document.getElementById('tuesday').checked = route.tuesday;
+            document.getElementById('wednesday').checked = route.wednesday;
+            document.getElementById('thursday').checked = route.thursday;
+            document.getElementById('friday').checked = route.friday;
+            document.getElementById('saturday').checked = route.saturday;
+            document.getElementById('sunday').checked = route.sunday;
+        }
+        
+        async function saveRoute() {
+            const id = document.getElementById('routeId').value;
+            const data = {
+                name: document.getElementById('routeName').value,
+                price: parseInt(document.getElementById('routePrice').value) || 0,
+                monday: document.getElementById('monday').checked,
+                tuesday: document.getElementById('tuesday').checked,
+                wednesday: document.getElementById('wednesday').checked,
+                thursday: document.getElementById('thursday').checked,
+                friday: document.getElementById('friday').checked,
+                saturday: document.getElementById('saturday').checked,
+                sunday: document.getElementById('sunday').checked
+            };
+            const url = id ? `/api/routes/${id}` : '/api/routes';
+            const method = id ? 'PUT' : 'POST';
+            const response = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            if (response.ok) {
+                showMessage('Сохранено');
+                clearForm();
+                loadRoutes();
+            } else {
+                showMessage('Ошибка');
+            }
+        }
+        
+        async function deleteRoute(id) {
+            if (!confirm('Удалить?')) return;
+            const response = await fetch(`/api/routes/${id}`, {method: 'DELETE'});
+            if (response.ok) { showMessage('Удалено'); loadRoutes(); }
+        }
+        
+        function clearForm() {
+            document.getElementById('routeId').value = '';
+            document.getElementById('routeName').value = '';
+            document.getElementById('routePrice').value = '';
+            document.getElementById('monday').checked = true;
+            document.getElementById('tuesday').checked = true;
+            document.getElementById('wednesday').checked = true;
+            document.getElementById('thursday').checked = true;
+            document.getElementById('friday').checked = true;
+            document.getElementById('saturday').checked = false;
+            document.getElementById('sunday').checked = false;
+        }
+        
+        function showMessage(text) {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            setTimeout(() => msg.textContent = '', 2000);
+        }
+        
+        loadRoutes();
+    </script>
+</body>
+</html>

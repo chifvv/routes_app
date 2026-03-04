@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>График</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 10px; font-size: 12px; background: #f5f5f5; }
+        h1 { color: #555; margin: 0 0 10px 0; font-size: 18px; }
+        .nav { margin-bottom: 10px; }
+        .nav a { margin-right: 10px; color: #666; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+        .controls { margin-bottom: 10px; }
+        .controls select, .controls button {
+            padding: 5px; margin: 2px; font-size: 12px;
+        }
+        table { border-collapse: collapse; background: #fff; }
+        th, td { border: 1px solid #ccc; padding: 4px; text-align: center; font-size: 11px; }
+        th { background: #ddd; }
+        th.driver-col { text-align: left; white-space: nowrap; width: 1px; }
+        th.day-col { white-space: nowrap; }
+        td.driver-cell { text-align: left; background: #f9f9f9; white-space: nowrap; }
+        td.route-cell.weekend { background: #888; color: #fff; }
+        td.route-cell { background: #fff; }
+        td.route-cell select option:disabled { color: #999; background: #f0f0f0; }
+        .big-car { background: rgba(255, 165, 0, 0.15) !important; }
+        .big-car td { background: transparent !important; }
+        .small-car { background: transparent; }
+        #message { padding: 5px; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="/">Маршруты</a>
+        <a href="/drivers">Водители</a>
+        <a href="/schedule">График</a>
+    </div>
+    
+    <div class="controls">
+        <select id="yearSelect" onchange="onMonthYearChange()"></select>
+        <select id="monthSelect" onchange="onMonthYearChange()">
+            <option value="1">Январь</option>
+            <option value="2">Февраль</option>
+            <option value="3">Март</option>
+            <option value="4">Апрель</option>
+            <option value="5">Май</option>
+            <option value="6">Июнь</option>
+            <option value="7">Июль</option>
+            <option value="8">Август</option>
+            <option value="9">Сентябрь</option>
+            <option value="10">Октябрь</option>
+            <option value="11">Ноябрь</option>
+            <option value="12">Декабрь</option>
+        </select>
+        <input type="text" id="holidayDays" placeholder="Выходные (дни): 1,2,8,9">
+        <button onclick="saveHolidays()">Сохранить выходные</button>
+        <button onclick="resetSchedule()">Сброс графика</button>
+        <span id="message"></span>
+    </div>
+    
+    <div id="scheduleContainer"></div>
+    
+    <script>
+        const weekDays = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
+        
+        function initYearSelect() {
+            const yearSelect = document.getElementById('yearSelect');
+            const currentYear = new Date().getFullYear();
+            for (let y = currentYear - 1; y <= currentYear + 1; y++) {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = y;
+                if (y === currentYear) opt.selected = true;
+                yearSelect.appendChild(opt);
+            }
+        }
+        
+        async function generateSchedule() {
+            const year = parseInt(document.getElementById('yearSelect').value);
+            const month = parseInt(document.getElementById('monthSelect').value);
+            const holidayDays = document.getElementById('holidayDays').value;
+            
+            const response = await fetch('/api/schedule/generate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({year, month, holiday_days: holidayDays})
+            });
+            
+            if (response.ok) {
+                showMessage('График создан');
+                loadSchedule(year, month);
+            } else {
+                showMessage('Ошибка');
+            }
+        }
+        
+        async function saveHolidays() {
+            const year = parseInt(document.getElementById('yearSelect').value);
+            const month = parseInt(document.getElementById('monthSelect').value);
+            const holidayDays = document.getElementById('holidayDays').value;
+            
+            const response = await fetch('/api/schedule/holidays', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({year, month, holiday_days: holidayDays})
+            });
+            
+            if (response.ok) {
+                showMessage('Выходные сохранены');
+                loadSchedule(year, month);
+            } else {
+                showMessage('Ошибка');
+            }
+        }
+        
+        async function resetSchedule() {
+            const year = parseInt(document.getElementById('yearSelect').value);
+            const month = parseInt(document.getElementById('monthSelect').value);
+            const holidayDays = document.getElementById('holidayDays').value;
+            
+            if (!confirm('Сбросить график? Все данные будут потеряны.')) return;
+            
+            const response = await fetch('/api/schedule/generate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({year, month, holiday_days: holidayDays, force: true})
+            });
+            
+            if (response.ok) {
+                showMessage('График сброшен');
+                loadSchedule(year, month);
+            } else {
+                showMessage('Ошибка');
+            }
+        }
+        
+        function onMonthYearChange() {
+            const year = parseInt(document.getElementById('yearSelect').value);
+            const month = parseInt(document.getElementById('monthSelect').value);
+            loadSchedule(year, month);
+        }
+        
+        async function loadSchedule(year, month) {
+            let scheduleRes = await fetch(`/api/schedule/${year}/${month}`);
+            let scheduleData = await scheduleRes.json();
+            
+            const routesRes = await fetch('/api/routes');
+            const routes = await routesRes.json();
+            
+            document.getElementById('holidayDays').value = scheduleData.holiday_days || '';
+            renderSchedule(scheduleData, routes);
+        }
+        
+        function renderSchedule(data, routes) {
+            const container = document.getElementById('scheduleContainer');
+            const routeMap = {};
+            routes.forEach(r => routeMap[r.id] = r.name);
+            
+            const holidayDays = (data.holiday_days || '').split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d));
+            
+            const dayFieldMap = {
+                0: 'sunday',      // ВС
+                1: 'monday',     // ПН
+                2: 'tuesday',    // ВТ
+                3: 'wednesday',  // СР
+                4: 'thursday',  // ЧТ
+                5: 'friday',     // ПТ
+                6: 'saturday'   // СБ
+            };
+            
+            // Собираем какие маршруты заняты в каждый день
+            const usedRoutes = {};
+            for (let day = 1; day <= data.days_in_month; day++) {
+                usedRoutes[day] = new Set();
+                data.drivers.forEach(d => {
+                    const val = d.days[day];
+                    if (val && val !== 'В' && val !== 'О' && val !== '') {
+                        usedRoutes[day].add(String(val));
+                    }
+                });
+            }
+            
+            let html = '<table><thead><tr>';
+            html += '<th class="driver-col">Водитель</th>';
+            
+            for (let day = 1; day <= data.days_in_month; day++) {
+                const date = new Date(data.year, data.month - 1, day);
+                const weekday = date.getDay();
+                const isWeekend = (weekday === 0 || weekday === 6);
+                const isHoliday = holidayDays.includes(day);
+                const jsToPy = [6, 0, 1, 2, 3, 4, 5];
+                const dayName = weekDays[jsToPy[weekday]];
+                html += `<th class="day-col${(isWeekend || isHoliday) ? ' weekend' : ''}">${day}<br>${dayName}</th>`;
+            }
+            html += '<th>Кол-во</th><th>Сумма</th></tr></thead><tbody>';
+            
+            // Подсчет свободных водителей в выходные дни (пусто, не В, не О, не Озон)
+            const dayWorkCount = {};
+            for (let day = 1; day <= data.days_in_month; day++) {
+                const date = new Date(data.year, data.month - 1, day);
+                const weekday = date.getDay();
+                const isWeekend = (weekday === 0 || weekday === 6) || holidayDays.includes(day);
+                
+                dayWorkCount[day] = 0;
+                if (isWeekend) {
+                    data.drivers.forEach(d => {
+                        const val = d.days[day];
+                        // Считаем только пустые
+                        if (!val || val === '') {
+                            dayWorkCount[day]++;
+                        }
+                    });
+                }
+            }
+            
+            data.drivers.forEach(driver => {
+                html += `<tr class="${driver.is_big_with_routes ? 'big-car' : 'small-car'}"><td class="driver-cell">${driver.driver_name}</td>`;
+                
+                for (let day = 1; day <= data.days_in_month; day++) {
+                    const date = new Date(data.year, data.month - 1, day);
+                    const weekday = date.getDay();
+                    const isWeekend = (weekday === 0 || weekday === 6);
+                    const isHoliday = holidayDays.includes(day);
+                    let currentValue = driver.days[day] || '';
+                    
+                    html += `<td class="route-cell${(isWeekend || isHoliday) ? ' weekend' : ''}">`;
+                    html += `<select onchange="updateDay(${driver.driver_id}, ${day}, this.value)" style="width:100%;font-size:10px;border:none;background:transparent;">`;
+                    html += `<option value=""></option>`;
+                    
+                    const routeField = dayFieldMap[weekday];
+                    routes.forEach(r => {
+                        const routeId = String(r.id);
+                        const isUsed = usedRoutes[day].has(routeId) && String(currentValue) !== routeId;
+                        const isDayAllowed = r[routeField];
+                        if (isDayAllowed || String(currentValue) === routeId) {
+                            html += `<option value="${r.id}" ${String(currentValue) === routeId ? 'selected' : ''} ${isUsed ? 'disabled' : ''}>${r.name}</option>`;
+                        }
+                    });
+                    html += `<option value="В" ${currentValue === 'В' ? 'selected' : ''}>В</option>`;
+                    html += `<option value="О" ${currentValue === 'О' ? 'selected' : ''}>О</option>`;
+                    html += `</select></td>`;
+                }
+                html += `<td>${driver.trip_count}</td><td>${driver.trip_sum}</td></tr>`;
+            });
+            
+            // Итоговая строка
+            html += '<tr><td></td>';
+            for (let day = 1; day <= data.days_in_month; day++) {
+                const date = new Date(data.year, data.month - 1, day);
+                const weekday = date.getDay();
+                const isWeekend = (weekday === 0 || weekday === 6);
+                const isHoliday = holidayDays.includes(day);
+                const showCount = isWeekend || isHoliday;
+                html += `<td class="route-cell${(isWeekend || isHoliday) ? ' weekend' : ''}">${showCount ? dayWorkCount[day] : ''}</td>`;
+            }
+            html += '<td></td><td></td></tr>';
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+        
+        function showMessage(text) {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            setTimeout(() => msg.textContent = '', 2000);
+        }
+        
+        async function updateDay(driverId, day, value) {
+            const year = parseInt(document.getElementById('yearSelect').value);
+            const month = parseInt(document.getElementById('monthSelect').value);
+            
+            const response = await fetch('/api/schedule/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    year, month, driver_id: driverId, day, value
+                })
+            });
+            
+            if (response.ok) {
+                loadSchedule(year, month);
+            }
+        }
+        
+        initYearSelect();
+        
+        const now = new Date();
+        let nextMonth = now.getMonth() + 2;
+        let nextYear = now.getFullYear();
+        if (nextMonth > 12) {
+            nextMonth = 1;
+            nextYear += 1;
+        }
+        document.getElementById('monthSelect').value = nextMonth;
+        document.getElementById('yearSelect').value = nextYear;
+        loadSchedule(nextYear, nextMonth);
+    </script>
+</body>
+</html>

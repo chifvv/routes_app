@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Водители</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 10px; font-size: 13px; background: #f5f5f5; }
+        h1 { color: #555; margin: 0 0 10px 0; font-size: 18px; }
+        h2 { color: #666; margin: 10px 0 5px 0; font-size: 14px; }
+        .nav { margin-bottom: 10px; }
+        .nav a { margin-right: 10px; color: #666; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+        .card { 
+            border: 1px solid #ccc; 
+            padding: 8px; 
+            margin-bottom: 5px; 
+            background: #fff;
+        }
+        .card input, .card select {
+            padding: 3px; margin: 2px; font-size: 12px;
+        }
+        .card label { display: inline-block; margin: 3px 8px 3px 0; }
+        button { 
+            padding: 4px 10px; 
+            margin: 2px; 
+            cursor: pointer;
+            background: #888;
+            color: #fff;
+            border: none;
+            font-size: 12px;
+        }
+        button:hover { background: #666; }
+        button.delete { background: #999; }
+        #message { padding: 5px; margin-bottom: 5px; }
+        .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .checkbox-group label { margin-right: 8px; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="/">Маршруты</a>
+        <a href="/drivers">Водители</a>
+        <a href="/schedule">График</a>
+    </div>
+    
+    <div id="message"></div>
+    
+    <div class="card">
+        <input type="hidden" id="driverId">
+        <div class="row">
+            <label>ФИО: <input type="text" id="driverName" placeholder="Фамилия И.О."></label>
+            <label>Машина: 
+                <select id="carType">
+                    <option value="small">Маленькая</option>
+                    <option value="big">Большая</option>
+                </select>
+            </label>
+        </div>
+        <div class="checkbox-group" id="routesCheckboxes">
+            <span>Маршруты:</span>
+        </div>
+        <div class="checkbox-group">
+            <span>Без командировки:</span>
+            <label><input type="checkbox" id="no_mon"> ПН</label>
+            <label><input type="checkbox" id="no_tue"> ВТ</label>
+            <label><input type="checkbox" id="no_wed"> СР</label>
+            <label><input type="checkbox" id="no_thu"> ЧТ</label>
+            <label><input type="checkbox" id="no_fri"> ПТ</label>
+            <label><input type="checkbox" id="no_sat"> СБ</label>
+            <label><input type="checkbox" id="no_sun"> ВС</label>
+        </div>
+        <button onclick="saveDriver()">Сохранить</button>
+        <button onclick="clearForm()">Очистить</button>
+    </div>
+    
+    <h2>Список</h2>
+    <div id="driversList"></div>
+    
+    <script>
+        let drivers = [];
+        let routes = [];
+        
+        async function loadDrivers() {
+            const [driversRes, routesRes] = await Promise.all([
+                fetch('/api/drivers'),
+                fetch('/api/routes')
+            ]);
+            drivers = await driversRes.json();
+            routes = await routesRes.json();
+            renderRoutesSelect();
+            renderDrivers();
+        }
+        
+        function renderRoutesSelect() {
+            const container = document.getElementById('routesCheckboxes');
+            container.innerHTML = '<span>Маршруты:</span>';
+            routes.forEach(r => {
+                const label = document.createElement('label');
+                label.innerHTML = `<input type="checkbox" class="route-chk" value="${r.id}"> ${r.name}`;
+                container.appendChild(label);
+            });
+        }
+        
+        function renderDrivers() {
+            const list = document.getElementById('driversList');
+            list.innerHTML = '';
+            drivers.forEach(driver => {
+                const carType = driver.car_type === 'big' ? 'Большая' : 'Маленькая';
+                const driverRoutes = driver.route_ids ? driver.route_ids.split(',').map(id => {
+                    const r = routes.find(rt => rt.id == id);
+                    return r ? r.name : id;
+                }).join(', ') : '-';
+                list.innerHTML += `
+                    <div class="card">
+                        <b>${driver.name}</b> - ${carType}
+                        | Маршруты: ${driverRoutes}
+                        | Без ком: ${driver.no_trip_days || '-'}
+                        <button class="edit" onclick="editDriver(${driver.id})">Ред</button>
+                        <button class="delete" onclick="deleteDriver(${driver.id})">Х</button>
+                    </div>
+                `;
+            });
+        }
+        
+        function editDriver(id) {
+            const driver = drivers.find(d => d.id === id);
+            if (!driver) return;
+            document.getElementById('driverId').value = driver.id;
+            document.getElementById('driverName').value = driver.name;
+            document.getElementById('carType').value = driver.car_type;
+            
+            const selectedIds = driver.route_ids ? driver.route_ids.split(',') : [];
+            document.querySelectorAll('.route-chk').forEach(chk => {
+                chk.checked = selectedIds.includes(chk.value);
+            });
+            
+            document.getElementById('no_mon').checked = driver.no_trip_days.includes('ПН');
+            document.getElementById('no_tue').checked = driver.no_trip_days.includes('ВТ');
+            document.getElementById('no_wed').checked = driver.no_trip_days.includes('СР');
+            document.getElementById('no_thu').checked = driver.no_trip_days.includes('ЧТ');
+            document.getElementById('no_fri').checked = driver.no_trip_days.includes('ПТ');
+            document.getElementById('no_sat').checked = driver.no_trip_days.includes('СБ');
+            document.getElementById('no_sun').checked = driver.no_trip_days.includes('ВС');
+        }
+        
+        async function saveDriver() {
+            const id = document.getElementById('driverId').value;
+            const selectedRoutes = Array.from(document.querySelectorAll('.route-chk:checked')).map(chk => chk.value).join(',');
+            
+            const noTripDays = [];
+            if (document.getElementById('no_mon').checked) noTripDays.push('ПН');
+            if (document.getElementById('no_tue').checked) noTripDays.push('ВТ');
+            if (document.getElementById('no_wed').checked) noTripDays.push('СР');
+            if (document.getElementById('no_thu').checked) noTripDays.push('ЧТ');
+            if (document.getElementById('no_fri').checked) noTripDays.push('ПТ');
+            if (document.getElementById('no_sat').checked) noTripDays.push('СБ');
+            if (document.getElementById('no_sun').checked) noTripDays.push('ВС');
+            
+            const data = {
+                name: document.getElementById('driverName').value,
+                car_type: document.getElementById('carType').value,
+                route_ids: selectedRoutes,
+                no_trip_days: noTripDays.join(',')
+            };
+            const url = id ? `/api/drivers/${id}` : '/api/drivers';
+            const method = id ? 'PUT' : 'POST';
+            const response = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            if (response.ok) {
+                showMessage('Сохранено');
+                clearForm();
+                loadDrivers();
+            } else {
+                showMessage('Ошибка');
+            }
+        }
+        
+        async function deleteDriver(id) {
+            if (!confirm('Удалить?')) return;
+            const response = await fetch(`/api/drivers/${id}`, {method: 'DELETE'});
+            if (response.ok) { showMessage('Удалено'); loadDrivers(); }
+        }
+        
+        function clearForm() {
+            document.getElementById('driverId').value = '';
+            document.getElementById('driverName').value = '';
+            document.getElementById('carType').value = 'small';
+            document.querySelectorAll('.route-chk').forEach(chk => chk.checked = false);
+            document.getElementById('no_mon').checked = false;
+            document.getElementById('no_tue').checked = false;
+            document.getElementById('no_wed').checked = false;
+            document.getElementById('no_thu').checked = false;
+            document.getElementById('no_fri').checked = false;
+            document.getElementById('no_sat').checked = false;
+            document.getElementById('no_sun').checked = false;
+        }
+        
+        function showMessage(text) {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            setTimeout(() => msg.textContent = '', 2000);
+        }
+        
+        loadDrivers();
+    </script>
+</body>
+</html>

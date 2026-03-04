@@ -1,0 +1,8 @@
+console.log('April 2026:');
+for (let day = 1; day <= 10; day++) {
+    const date = new Date(2026, 3, day);
+    const weekday = date.getDay();
+    const days = ['ВС', 'ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ'];
+    const isWeekend = (weekday === 0 || weekday === 6);
+    console.log(`${day}: ${weekday} = ${days[weekday]} - ${isWeekend ? 'ВЫХОДНОЙ' : 'РАБОЧИЙ'}`);
+}
