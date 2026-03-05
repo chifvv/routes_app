@@ -41,6 +41,7 @@ class Driver(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     car_type = db.Column(db.String(20), default="small")
+    exclude_from_distribution = db.Column(db.Boolean, default=False)
     
     route_ids = db.Column(db.String(200), default="")
     no_trip_days = db.Column(db.String(200), default="")
@@ -212,6 +213,7 @@ def get_drivers():
         'id': d.id,
         'name': d.name,
         'car_type': d.car_type,
+        'exclude_from_distribution': d.exclude_from_distribution,
         'route_ids': d.route_ids,
         'no_trip_days': d.no_trip_days
     } for d in drivers])
@@ -223,6 +225,7 @@ def create_driver():
     driver = Driver(
         name=data['name'],
         car_type=data.get('car_type', 'small'),
+        exclude_from_distribution=data.get('exclude_from_distribution', False),
         route_ids=data.get('route_ids', ''),
         no_trip_days=data.get('no_trip_days', '')
     )
@@ -239,6 +242,7 @@ def update_driver(id):
     data = request.json
     driver.name = data.get('name', driver.name)
     driver.car_type = data.get('car_type', driver.car_type)
+    driver.exclude_from_distribution = data.get('exclude_from_distribution', driver.exclude_from_distribution)
     driver.route_ids = data.get('route_ids', driver.route_ids)
     driver.no_trip_days = data.get('no_trip_days', driver.no_trip_days)
     db.session.commit()
@@ -323,4 +327,11 @@ def delete_route(id):
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        # Добавляем колонку exclude_from_distribution если её нет
+        try:
+            from sqlalchemy import text
+            db.session.execute(text('ALTER TABLE driver ADD COLUMN exclude_from_distribution BOOLEAN DEFAULT 0'))
+            db.session.commit()
+        except Exception as e:
+            pass
     app.run(debug=True, host='0.0.0.0', port=5000)

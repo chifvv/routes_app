@@ -71,6 +71,9 @@
             <label><input type="checkbox" id="no_sat"> СБ</label>
             <label><input type="checkbox" id="no_sun"> ВС</label>
         </div>
+        <div class="checkbox-group">
+            <label><input type="checkbox" id="excludeFromDistribution"> Не учитывать при распределении</label>
+        </div>
         <button onclick="saveDriver()">Сохранить</button>
         <button onclick="clearForm()">Очистить</button>
     </div>
@@ -108,13 +111,14 @@
             list.innerHTML = '';
             drivers.forEach(driver => {
                 const carType = driver.car_type === 'big' ? 'Большая' : 'Маленькая';
+                const excludeText = driver.exclude_from_distribution ? 'Да' : 'Нет';
                 const driverRoutes = driver.route_ids ? driver.route_ids.split(',').map(id => {
                     const r = routes.find(rt => rt.id == id);
                     return r ? r.name : id;
                 }).join(', ') : '-';
                 list.innerHTML += `
                     <div class="card">
-                        <b>${driver.name}</b> - ${carType}
+                        <b>${driver.name}</b> - ${carType} | Не распределять: ${excludeText}
                         | Маршруты: ${driverRoutes}
                         | Без ком: ${driver.no_trip_days || '-'}
                         <button class="edit" onclick="editDriver(${driver.id})">Ред</button>
@@ -130,6 +134,7 @@
             document.getElementById('driverId').value = driver.id;
             document.getElementById('driverName').value = driver.name;
             document.getElementById('carType').value = driver.car_type;
+            document.getElementById('excludeFromDistribution').checked = driver.exclude_from_distribution || false;
             
             const selectedIds = driver.route_ids ? driver.route_ids.split(',') : [];
             document.querySelectorAll('.route-chk').forEach(chk => {
@@ -161,6 +166,7 @@
             const data = {
                 name: document.getElementById('driverName').value,
                 car_type: document.getElementById('carType').value,
+                exclude_from_distribution: document.getElementById('excludeFromDistribution').checked,
                 route_ids: selectedRoutes,
                 no_trip_days: noTripDays.join(',')
             };
@@ -190,6 +196,7 @@
             document.getElementById('driverId').value = '';
             document.getElementById('driverName').value = '';
             document.getElementById('carType').value = 'small';
+            document.getElementById('excludeFromDistribution').checked = false;
             document.querySelectorAll('.route-chk').forEach(chk => chk.checked = false);
             document.getElementById('no_mon').checked = false;
             document.getElementById('no_tue').checked = false;
